@@ -1,21 +1,34 @@
 # pages/02_Neuer_Fall.py
 
 import streamlit as st
-from utils import init_state, custom_css, MTS_CATEGORIES, MTS_COLOR_MAP, create_case, lab_tests, recommendations, diagnoses
+from utils import init_state, custom_css, MTS_CATEGORIES, MTS_COLOR_MAP, create_case
 import time
-from datetime import datetime
-import random
 
+# --- Datenabruf aus Session State (KORREKTUR hier) ---
+# Wichtig: Diese Listen müssen nach init_state() abgerufen werden, da sie dort befüllt werden.
+# Und sie müssen in jeder Page-Datei abgerufen werden, da sie nicht global sind.
+# Sie können NICHT direkt aus `utils` importiert werden wie `lab_tests`.
+# Wir greifen stattdessen auf st.session_state zu.
+
+# Setup
 st.set_page_config(layout="wide", page_title="Neuer Fall")
-init_state()
+init_state() # Initialisiert st.session_state.lab_tests etc.
+
+# Jetzt können wir die Daten aus dem Session State abrufen
+_lab_tests = st.session_state.lab_tests
+_recommendations = st.session_state.recommendations
+_diagnoses = st.session_state.diagnoses
+
+
 custom_css()
 
 # --- Zustandsmanagement für serielle Schritte ---
-if 'step' not in st.session_state: st.session_state.step = 0
-if 'new_case_data' not in st.session_state: st.session_state.new_case_data = {}
-if 'selected_tests' not in st.session_state: st.session_state.selected_tests = []
-if 'current_recommendation' not in st.session_state: st.session_state.current_recommendation = None
-if 'is_analyzing' not in st.session_state: st.session_state.is_analyzing = False
+# Diese sind bereits in utils.py/init_state() initialisiert
+# if 'step' not in st.session_state: st.session_state.step = 0
+# if 'new_case_data' not in st.session_state: st.session_state.new_case_data = {}
+# if 'selected_tests' not in st.session_state: st.session_state.selected_tests = []
+# if 'current_recommendation' not in st.session_state: st.session_state.current_recommendation = None
+# if 'is_analyzing' not in st.session_state: st.session_state.is_analyzing = False
 
 
 def next_step(data={}):
@@ -36,7 +49,7 @@ def handle_analyze():
     time.sleep(0.8) # Simulate network delay
     
     matching_rec = next((
-        r for r in recommendations 
+        r for r in _recommendations # Greift auf _recommendations aus st.session_state zu
         if r['diagnosis_name'].lower() == diag.lower() and 
            r['mts_category'] == mts
     ), None)
@@ -77,22 +90,25 @@ def handle_submit():
         return
 
     # Analyse der Qualität
-    mandatory_tests = rec.get('mandatory_tests', [])
-    recommended_set = set(rec.get('recommended_tests', []))
-    optional_test_codes = set(rec.get('optional_tests', []))
+    # Sicherstellen, dass rec existiert, bevor auf dessen Keys zugegriffen wird
+    mandatory_tests = rec.get('mandatory_tests', []) if rec else []
+    recommended_set = set(rec.get('recommended_tests', [])) if rec else set()
+    optional_test_codes = set(rec.get('optional_tests', [])) if rec else set()
 
     missing_tests = [t for t in mandatory_tests if t not in selected_tests]
     unnecessary_tests = [t for t in selected_tests if t not in recommended_set and t not in optional_test_codes]
     
-    max_duration = max([t['estimated_duration_minutes'] for t in lab_tests if t['test_code'] in selected_tests], default=0)
+    max_duration = max([t['estimated_duration_minutes'] for t in _lab_tests if t['test_code'] in selected_tests], default=0)
 
     # Datenstruktur erstellen
     case_data = {
         **st.session_state.new_case_data, # Übernimmt alle gesammelten Daten
         "ordered_tests": selected_tests,
         "recommended_tests": rec['recommended_tests'] if rec else [],
-        "missing_tests": missing_tests,
-        "unnecessary_tests": unnecessary_tests,
+        "mandatory_tests_rec": rec['mandatory_tests'] if rec else [], # Füge die Pflichttests aus der Empfehlung hinzu
+        "optional_tests_rec": rec['optional_tests'] if rec else [],   # Füge die optionalen Tests aus der Empfehlung hinzu
+        "missing_tests": missing,
+        "unnecessary_tests": unnecessary,
         "estimated_total_duration": max_duration,
     }
 
@@ -111,7 +127,7 @@ def handle_submit():
 # --- UI Layout ---
 st.markdown('<div class="max-w-4xl mx-auto py-6">', unsafe_allow_html=True) # Main Container
 
-st.page_link("app.py", label="Zurück zum Dashboard", icon="arrow_left")
+st.page_link("app.py", label="Zurück zum Dashboard", icon="home") # Korrektur: "home" als Lucide Icon
 st.markdown("<h1 style='font-size: 2.25rem; font-weight: 700; color: #0F172A;'>Neuer Fall anlegen</h1>", unsafe_allow_html=True)
 st.markdown("<p style='color: #64748B;'>Erfassen Sie Patientendaten und Laborempfehlungen</p>", unsafe_allow_html=True)
 st.markdown("---")
@@ -119,7 +135,7 @@ st.markdown("---")
 
 # --- Progress Bar ---
 MAX_STEPS = 6 # (0 bis 5)
-st.progress(st.session_state.step / MAX_STEPS, text=f"Schritt {st.session_state.step+1}/{MAX_STEPS}")
+st.progress((st.session_state.step + 1) / MAX_STEPS, text=f"Schritt {st.session_state.step+1}/{MAX_STEPS}")
 st.markdown("<br>", unsafe_allow_html=True)
 
 
@@ -140,7 +156,7 @@ if st.session_state.step == 0:
         with col_gender:
             gender_options = ['Männlich', 'Weiblich', 'Divers']
             gender = st.selectbox("Geschlecht", options=gender_options, 
-                                  index=gender_options.index(st.session_state.new_case_data.get('gender', 'Männlich')))
+                                  index=gender_options.index(st.session_state.new_case_data.get('gender', gender_options[0])))
         
         if st.form_submit_button("Weiter zu MTS-Einstufung", type="primary"):
             if patient_number:
@@ -225,12 +241,15 @@ elif st.session_state.step == 4:
     st.markdown("### 5. Verdachtsdiagnose & KI-Analyse")
     st.markdown("Geben Sie eine Verdachtsdiagnose ein und lassen Sie sich Laborempfehlungen vorschlagen.")
 
+    # Liste der verfügbaren Diagnosen für die Auto-Vervollständigung / Empfehlungshilfe
+    available_diagnoses_names = [d['diagnosis_name'] for d in _diagnoses] # Greift auf _diagnoses aus st.session_state zu
+
     st.text_input(
         "Verdachtsdiagnose",
         placeholder="z.B. Akutes Koronarsyndrom",
         key='current_diagnosis_input', # Ein separater Key für das Textfeld im aktuellen Step
         value=diagnosis_input_value,
-        help=f"Verfügbare Diagnosen (für Demo): {', '.join([d['diagnosis_name'] for d in diagnoses])}"
+        help=f"Verfügbar: {', '.join(available_diagnoses_names)}"
     )
 
     col_back, col_analyze = st.columns(2)
@@ -269,7 +288,7 @@ elif st.session_state.step == 5:
         st.markdown("Tests, die basierend auf Diagnose und Dringlichkeit vorgeschlagen werden:")
         
         cols_rec = st.columns(3)
-        rec_tests_filtered = [test for test in lab_tests if test['test_code'] in recommended_test_codes]
+        rec_tests_filtered = [test for test in _lab_tests if test['test_code'] in recommended_test_codes] # Greift auf _lab_tests zu
         
         if not rec_tests_filtered:
             st.info("Keine spezifischen Tests empfohlen. Bitte wählen Sie manuell aus den 'Weiteren verfügbaren Tests'.", icon="💡")
@@ -279,6 +298,7 @@ elif st.session_state.step == 5:
                 is_mandatory = test['test_code'] in mandatory_test_codes
                 test_label = f"**{test['test_name']}** ({test['test_code']})"
                 
+                # Checkbox aktualisiert den Session State direkt
                 if st.checkbox(
                     test_label,
                     value=test['test_code'] in st.session_state.selected_tests,
@@ -299,7 +319,7 @@ elif st.session_state.step == 5:
         st.markdown("#### **Weitere verfügbare Tests**", unsafe_allow_html=True)
         st.markdown("Wählen Sie zusätzliche Tests, die Sie für diesen Fall für relevant halten.")
         
-        all_other_tests = [test for test in lab_tests if test['test_code'] not in recommended_test_codes]
+        all_other_tests = [test for test in _lab_tests if test['test_code'] not in recommended_test_codes] # Greift auf _lab_tests zu
         
         cols_other = st.columns(3)
         if not all_other_tests:
@@ -330,6 +350,7 @@ elif st.session_state.step == 5:
         selected_tests = st.session_state.selected_tests
         
         if selected_tests:
+            # Erneute Berechnung für die Anzeige
             missing_tests = [t for t in mandatory_test_codes if t not in selected_tests]
             unnecessary_tests = [t for t in selected_tests if t not in recommended_test_codes and t not in optional_test_codes]
             
@@ -354,6 +375,7 @@ elif st.session_state.step == 5:
             st.button("Zurück zur Diagnose", on_click=prev_step)
         with col_submit:
             st.markdown('<div class="green-button">', unsafe_allow_html=True)
+            # st.button gibt True zurück, wenn geklickt, False sonst. Es ist kein String.
             st.button("Fall speichern", on_click=handle_submit, disabled=len(selected_tests) == 0, use_container_width=True)
             st.markdown('</div>', unsafe_allow_html=True)
 

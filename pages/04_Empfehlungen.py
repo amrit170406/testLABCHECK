@@ -1,21 +1,24 @@
 # pages/04_Empfehlungen.py
 
 import streamlit as st
-from utils import init_state, custom_css, MTS_CATEGORIES, MTS_COLOR_MAP, create_recommendation, delete_recommendation, lab_tests
+from utils import init_state, custom_css, MTS_CATEGORIES, MTS_COLOR_MAP, create_recommendation, delete_recommendation, LAB_CATEGORIES_BADGE_MAP
 import time
 
+# Setup
 st.set_page_config(layout="wide", page_title="Laborempfehlungen")
-init_state()
+init_state() # Stellt sicher, dass alle Session State Variablen initialisiert sind
 custom_css()
 
-# --- Datenabruf ---
-recommendations = st.session_state.recommendations
-test_codes = [t['test_code'] for t in lab_tests] # Holen Sie sich die tatsächlichen Test-Codes
+# --- Datenabruf (aus Session State) ---
+_recommendations = st.session_state.recommendations
+_lab_tests = st.session_state.lab_tests # Muss hier verfügbar sein, um Test-Codes zu holen
+
+test_codes = [t['test_code'] for t in _lab_tests] # Holen Sie sich die tatsächlichen Test-Codes
 
 # --- UI Layout ---
 st.markdown('<div class="max-w-7xl mx-auto py-6">', unsafe_allow_html=True) # Main Container
 
-st.page_link("app.py", label="Zurück zum Dashboard", icon="arrow_left")
+st.page_link("app.py", label="Zurück zum Dashboard", icon="home") # Korrektur: "home" als Lucide Icon
 
 col_header_1, col_header_2 = st.columns([3, 1])
 
@@ -49,12 +52,12 @@ if st.session_state.get('new_rec_dialog_open', False):
         new_mandatory_tests_sel = st.multiselect(
             "Pflicht-Tests",
             options=test_codes,
-            help="Tests, deren Fehlen als Warnung angezeigt wird."
+            help="Tests, deren Fehlen als Warnung angezeigt wird. Müssen Teil der empfohlenen Tests sein."
         )
         new_optional_tests_sel = st.multiselect(
             "Optionale Tests",
             options=test_codes,
-            help="Tests, die nicht empfohlen, aber für diese Diagnose relevant sein können."
+            help="Tests, die nicht empfohlen, aber für diese Diagnose relevant sein können (lösen keine Warnung aus, wenn sie fehlen)."
         )
         
         new_rationale = st.text_area("Begründung", placeholder="Klinische Begründung für diese Empfehlung...", height=100)
@@ -62,7 +65,10 @@ if st.session_state.get('new_rec_dialog_open', False):
         col_dialog_buttons_1, col_dialog_buttons_2 = st.columns(2)
         with col_dialog_buttons_1:
             if st.form_submit_button("Speichern", type="primary"):
-                if not new_diagnosis_name or not new_recommended_tests_sel:
+                # Validierung: Pflicht-Tests müssen Teil der empfohlenen Tests sein
+                if not set(new_mandatory_tests_sel).issubset(set(new_recommended_tests_sel)):
+                    st.error("Pflicht-Tests müssen in der Liste der 'Empfohlenen Tests' enthalten sein.")
+                elif not new_diagnosis_name or not new_recommended_tests_sel:
                     st.error("Diagnose und Empfohlene Tests sind Pflichtfelder.")
                 else:
                     data = {
@@ -86,7 +92,7 @@ if st.session_state.get('new_rec_dialog_open', False):
 st.markdown('<div class="stCard-custom">', unsafe_allow_html=True)
 st.markdown('<div class="stCard-content">', unsafe_allow_html=True)
 
-if not recommendations:
+if not _recommendations: # Greift auf _recommendations zu
     st.markdown("""
         <div style="text-align: center; padding: 3rem 0;">
             <p style="color: #64748B; margin-bottom: 1rem;">Noch keine Empfehlungsregeln angelegt</p>
@@ -99,14 +105,14 @@ if not recommendations:
         st.session_state.new_rec_dialog_open = True
         st.rerun()
 else:
-    for rec in recommendations:
+    for rec in _recommendations: # Greift auf _recommendations zu
         mts_style = MTS_COLOR_MAP.get(rec['mts_category'], 'background-color: #94A3B8;')
         
         st.markdown(f"""
             <div style="border: 1px solid #E2E8F0; border-radius: 0.75rem; padding: 1rem; margin-bottom: 1rem; background-color: white;">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
                     <div style="display: flex; align-items: center; gap: 0.75rem;">
-                        <div style="width: 16px; height: 16px; border-radius: 9999px; {mts_style}"></div>
+                        <div class="mts-dot" style="{mts_style}"></div>
                         <div>
                             <h4 style="font-size: 1.125rem; font-weight: 600; color: #0F172A; margin: 0;">{rec['diagnosis_name']}</h4>
                             <span class="badge-base badge-outline" style="margin-top: 0.25rem;">{rec['mts_category']}</span>

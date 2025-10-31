@@ -1,29 +1,21 @@
 # pages/03_Laborparameter.py
 
 import streamlit as st
-from utils import init_state, custom_css, LABTEST_CATEGORIES, URGENCY_LEVELS, create_lab_test, delete_lab_test
+from utils import init_state, custom_css, LABTEST_CATEGORIES, URGENCY_LEVELS, create_lab_test, delete_lab_test, LAB_CATEGORIES_BADGE_MAP
 import time
 
+# Setup
 st.set_page_config(layout="wide", page_title="Laborparameter")
-init_state()
+init_state() # Stellt sicher, dass alle Session State Variablen initialisiert sind
 custom_css()
 
-# --- Konstanten und Mapping ---
-LAB_CATEGORIES_MAP = {
-    'Hämatologie': 'badge-red',
-    'Klinische Chemie': 'badge-blue',
-    'Gerinnung': 'badge-purple',
-    'Immunologie': 'badge-green',
-    'Mikrobiologie': 'badge-amber'
-}
-
-# --- Datenabruf ---
-lab_tests = st.session_state.lab_tests
+# --- Datenabruf (aus Session State) ---
+_lab_tests = st.session_state.lab_tests
 
 # --- UI Layout ---
 st.markdown('<div class="max-w-7xl mx-auto py-6">', unsafe_allow_html=True) # Main Container
 
-st.page_link("app.py", label="Zurück zum Dashboard", icon="arrow_left")
+st.page_link("app.py", label="Zurück zum Dashboard", icon="home") # Korrektur: "home" als Lucide Icon
 
 col_header_1, col_header_2 = st.columns([3, 1])
 
@@ -76,7 +68,7 @@ if st.session_state.get('new_test_dialog_open', False):
 st.markdown('<div class="stCard-custom">', unsafe_allow_html=True)
 st.markdown('<div class="stCard-content">', unsafe_allow_html=True)
 
-if not lab_tests:
+if not _lab_tests:
     st.markdown("""
         <div style="text-align: center; padding: 3rem 0;">
             <p style="color: #64748B; margin-bottom: 1rem;">Noch keine Labortests angelegt</p>
@@ -90,7 +82,7 @@ if not lab_tests:
         st.rerun()
 else:
     cols_tests = st.columns(3)
-    for i, test in enumerate(lab_tests):
+    for i, test in enumerate(_lab_tests): # Greift auf _lab_tests zu
         with cols_tests[i % 3]:
             # Custom Card Styling for Test Item
             st.markdown(f"""
@@ -105,7 +97,7 @@ else:
                         </div>
                     </div>
                     <div style="margin-top: 0.75rem;">
-                        <span class="badge-base {LAB_CATEGORIES_MAP.get(test['category'], 'badge-slate')}">{test['category']}</span>
+                        <span class="badge-base {LAB_CATEGORIES_BADGE_MAP.get(test['category'], 'badge-slate')}">{test['category']}</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; color: #475569; margin-top: 0.5rem;">
                         <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
